@@ -28,6 +28,18 @@ See [targets/example.json](targets/example.json) for reference.
 
 ### 2. Run with Docker
 
+A public image is available on GitHub Container Registry:
+
+```shell
+docker run -d \
+  -p 3000:3000 \
+  -v $(pwd)/targets:/targets \
+  -e TARGETS_DIR=/targets \
+  ghcr.io/devopsmitch/go-mail-form:main
+```
+
+Or build it yourself:
+
 ```shell
 docker build -t go-mail-form .
 docker run -d \
