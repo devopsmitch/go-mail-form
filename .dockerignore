@@ -1,0 +1,9 @@
+.git
+.github
+.gitignore
+.dockerignore
+go-mail-form
+targets
+LICENSE
+README.md
+Makefile
