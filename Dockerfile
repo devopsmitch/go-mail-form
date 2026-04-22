@@ -6,7 +6,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /mailform .
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates && \
+RUN apk add --no-cache ca-certificates curl && \
     adduser -D -H mailform
 COPY --from=build /mailform /mailform
 USER mailform
