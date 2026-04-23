@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -147,6 +148,14 @@ func (s *Server) mailHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
+
+	if from != "" {
+		sender := from
+		if name != "" {
+			sender = name + " (" + from + ")"
+		}
+		body = fmt.Sprintf("%s submitted the following via your website:\n\n%s", sender, body)
+	}
 
 	if err := s.Sender.SendMail(r.Context(), target, emailFrom, replyTo, fullSubject, body, attachments); err != nil {
 		log.Printf("[!] Error sending email for target %s: %v", targetName, err)
