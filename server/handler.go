@@ -96,6 +96,20 @@ func (s *Server) mailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if verifier, ok := s.Turnstile[targetName]; ok {
+		token := r.FormValue("cf-turnstile-response")
+		ok, err := verifier.Verify(r.Context(), token, ip)
+		if err != nil {
+			log.Printf("[!] Turnstile verification error for target %s: %v", targetName, err)
+			redirectOrJSON(target, w, r, http.StatusInternalServerError, "captcha verification failed")
+			return
+		}
+		if !ok {
+			redirectOrJSON(target, w, r, http.StatusForbidden, "captcha verification failed")
+			return
+		}
+	}
+
 	if problems := validateFields(from, subject, body); len(problems) > 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)

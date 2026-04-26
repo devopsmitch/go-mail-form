@@ -14,6 +14,8 @@ import (
 	"github.com/devopsmitch/go-mail-form/mail"
 )
 
+// --- Test helpers ---
+
 func testServer(sender MailSender) *Server {
 	targets := map[string]*config.Target{
 		"test": {
@@ -39,6 +41,12 @@ func testServer(sender MailSender) *Server {
 			Recipients: []string{"to@example.com"},
 			From:       "noreply@example.com",
 			Origin:     "https://example.com",
+			RateLimit:  &config.RateLimit{Timespan: 60, Requests: 10},
+		},
+		"with-turnstile": {
+			SMTP:       "smtps://user:pass@smtp.example.com",
+			Recipients: []string{"to@example.com"},
+			From:       "noreply@example.com",
 			RateLimit:  &config.RateLimit{Timespan: 60, Requests: 10},
 		},
 	}
@@ -85,6 +93,20 @@ func assertJSON(t *testing.T, w *httptest.ResponseRecorder) {
 	}
 }
 
+type turnstileVerifierFunc func(ctx context.Context, token, remoteIP string) (bool, error)
+
+func (f turnstileVerifierFunc) Verify(ctx context.Context, token, remoteIP string) (bool, error) {
+	return f(ctx, token, remoteIP)
+}
+
+func turnstileMock(success bool) TurnstileVerifier {
+	return turnstileVerifierFunc(func(ctx context.Context, token, remoteIP string) (bool, error) {
+		return success, nil
+	})
+}
+
+// --- Health check ---
+
 func TestHealthCheck(t *testing.T) {
 	srv := testServer(noopSender())
 	w := httptest.NewRecorder()
@@ -98,6 +120,8 @@ func TestHealthCheckMethodNotAllowed(t *testing.T) {
 	srv.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/healthz", nil))
 	assertCode(t, w, http.StatusMethodNotAllowed)
 }
+
+// --- Routing ---
 
 func TestTargetNotFound(t *testing.T) {
 	srv := testServer(noopSender())
@@ -122,6 +146,68 @@ func TestPathTraversalRejected(t *testing.T) {
 	assertCode(t, w, http.StatusNotFound)
 }
 
+// --- CORS ---
+
+func TestCORSPreflight(t *testing.T) {
+	srv := testServer(noopSender())
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodOptions, "/test", nil)
+	srv.Handler().ServeHTTP(w, r)
+	assertCode(t, w, http.StatusOK)
+	if w.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatal("expected CORS allow origin *")
+	}
+}
+
+// --- Auth ---
+
+func TestAuthRequired(t *testing.T) {
+	srv := testServer(noopSender())
+
+	// No auth header
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, postForm("/with-key", validForm()))
+	assertCode(t, w, http.StatusUnauthorized)
+	assertJSON(t, w)
+
+	// Wrong key
+	w = httptest.NewRecorder()
+	r := postForm("/with-key", validForm())
+	r.Header.Set("Authorization", "Bearer wrong")
+	srv.Handler().ServeHTTP(w, r)
+	assertCode(t, w, http.StatusUnauthorized)
+
+	// Correct key
+	w = httptest.NewRecorder()
+	r = postForm("/with-key", validForm())
+	r.Header.Set("Authorization", "Bearer secret123")
+	srv.Handler().ServeHTTP(w, r)
+	assertCode(t, w, http.StatusOK)
+}
+
+// --- Origin ---
+
+func TestOriginCheck(t *testing.T) {
+	srv := testServer(noopSender())
+
+	// Wrong origin
+	w := httptest.NewRecorder()
+	r := postForm("/with-origin", validForm())
+	r.Header.Set("Origin", "https://evil.com")
+	srv.Handler().ServeHTTP(w, r)
+	assertCode(t, w, http.StatusForbidden)
+	assertJSON(t, w)
+
+	// Correct origin
+	w = httptest.NewRecorder()
+	r = postForm("/with-origin", validForm())
+	r.Header.Set("Origin", "https://example.com")
+	srv.Handler().ServeHTTP(w, r)
+	assertCode(t, w, http.StatusOK)
+}
+
+// --- Method ---
+
 func TestMethodNotAllowed(t *testing.T) {
 	srv := testServer(noopSender())
 	w := httptest.NewRecorder()
@@ -130,20 +216,7 @@ func TestMethodNotAllowed(t *testing.T) {
 	assertJSON(t, w)
 }
 
-func TestSuccessfulSend(t *testing.T) {
-	srv := testServer(noopSender())
-	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, postForm("/test", validForm()))
-	assertCode(t, w, http.StatusOK)
-}
-
-func TestSendFailure(t *testing.T) {
-	srv := testServer(failSender())
-	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, postForm("/test", validForm()))
-	assertCode(t, w, http.StatusInternalServerError)
-	assertJSON(t, w)
-}
+// --- Antispam ---
 
 func TestHoneypotRejects(t *testing.T) {
 	srv := testServer(failSender()) // would fail if actually called
@@ -154,17 +227,36 @@ func TestHoneypotRejects(t *testing.T) {
 	assertCode(t, w, http.StatusOK)
 }
 
-func TestEmptyFromWhenNoDefault(t *testing.T) {
+func TestTurnstileRejectsInvalidToken(t *testing.T) {
 	srv := testServer(noopSender())
-	form := url.Values{
-		"subject": {"Hello"},
-		"body":    {"This is a test message"},
-	}
+	srv.Turnstile["with-turnstile"] = turnstileMock(false)
+	form := validForm()
+	form.Set("cf-turnstile-response", "bad-token")
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, postForm("/no-from", form))
-	assertCode(t, w, http.StatusUnprocessableEntity)
+	srv.Handler().ServeHTTP(w, postForm("/with-turnstile", form))
+	assertCode(t, w, http.StatusForbidden)
 	assertJSON(t, w)
 }
+
+func TestTurnstileAcceptsValidToken(t *testing.T) {
+	srv := testServer(noopSender())
+	srv.Turnstile["with-turnstile"] = turnstileMock(true)
+	form := validForm()
+	form.Set("cf-turnstile-response", "valid-token")
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, postForm("/with-turnstile", form))
+	assertCode(t, w, http.StatusOK)
+}
+
+func TestTurnstileSkippedWhenNotConfigured(t *testing.T) {
+	// "test" target has no turnstile config — should work without the field
+	srv := testServer(noopSender())
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, postForm("/test", validForm()))
+	assertCode(t, w, http.StatusOK)
+}
+
+// --- Validation ---
 
 func TestValidation(t *testing.T) {
 	tests := []struct {
@@ -201,56 +293,31 @@ func TestValidation(t *testing.T) {
 	}
 }
 
-func TestAuthRequired(t *testing.T) {
+func TestEmptyFromWhenNoDefault(t *testing.T) {
 	srv := testServer(noopSender())
-
-	// No auth header
-	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, postForm("/with-key", validForm()))
-	assertCode(t, w, http.StatusUnauthorized)
-	assertJSON(t, w)
-
-	// Wrong key
-	w = httptest.NewRecorder()
-	r := postForm("/with-key", validForm())
-	r.Header.Set("Authorization", "Bearer wrong")
-	srv.Handler().ServeHTTP(w, r)
-	assertCode(t, w, http.StatusUnauthorized)
-
-	// Correct key
-	w = httptest.NewRecorder()
-	r = postForm("/with-key", validForm())
-	r.Header.Set("Authorization", "Bearer secret123")
-	srv.Handler().ServeHTTP(w, r)
-	assertCode(t, w, http.StatusOK)
-}
-
-func TestOriginCheck(t *testing.T) {
-	srv := testServer(noopSender())
-
-	// Wrong origin
-	w := httptest.NewRecorder()
-	r := postForm("/with-origin", validForm())
-	r.Header.Set("Origin", "https://evil.com")
-	srv.Handler().ServeHTTP(w, r)
-	assertCode(t, w, http.StatusForbidden)
-	assertJSON(t, w)
-
-	// Correct origin
-	w = httptest.NewRecorder()
-	r = postForm("/with-origin", validForm())
-	r.Header.Set("Origin", "https://example.com")
-	srv.Handler().ServeHTTP(w, r)
-	assertCode(t, w, http.StatusOK)
-}
-
-func TestCORSPreflight(t *testing.T) {
-	srv := testServer(noopSender())
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodOptions, "/test", nil)
-	srv.Handler().ServeHTTP(w, r)
-	assertCode(t, w, http.StatusOK)
-	if w.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Fatal("expected CORS allow origin *")
+	form := url.Values{
+		"subject": {"Hello"},
+		"body":    {"This is a test message"},
 	}
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, postForm("/no-from", form))
+	assertCode(t, w, http.StatusUnprocessableEntity)
+	assertJSON(t, w)
+}
+
+// --- Send ---
+
+func TestSuccessfulSend(t *testing.T) {
+	srv := testServer(noopSender())
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, postForm("/test", validForm()))
+	assertCode(t, w, http.StatusOK)
+}
+
+func TestSendFailure(t *testing.T) {
+	srv := testServer(failSender())
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, postForm("/test", validForm()))
+	assertCode(t, w, http.StatusInternalServerError)
+	assertJSON(t, w)
 }

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/devopsmitch/go-mail-form/antispam"
 	"github.com/devopsmitch/go-mail-form/config"
 	"github.com/devopsmitch/go-mail-form/mail"
 )
@@ -22,11 +23,17 @@ func (f MailSenderFunc) SendMail(ctx context.Context, target *config.Target, fro
 	return f(ctx, target, from, replyTo, subject, body, attachments)
 }
 
+// TurnstileVerifier validates a Cloudflare Turnstile token.
+type TurnstileVerifier interface {
+	Verify(ctx context.Context, token, remoteIP string) (bool, error)
+}
+
 // Server holds all application state.
 type Server struct {
 	Targets       map[string]*config.Target
 	Sender        MailSender
 	TrustedHeader string
+	Turnstile     map[string]TurnstileVerifier
 	limiters      map[string]*targetLimiter
 	mu            sync.RWMutex
 }
@@ -34,14 +41,18 @@ type Server struct {
 // New creates a Server from loaded targets and starts rate limit cleanup.
 func New(targets map[string]*config.Target, sender MailSender) *Server {
 	s := &Server{
-		Targets:  targets,
-		Sender:   sender,
-		limiters: make(map[string]*targetLimiter, len(targets)),
+		Targets:   targets,
+		Sender:    sender,
+		Turnstile: make(map[string]TurnstileVerifier),
+		limiters:  make(map[string]*targetLimiter, len(targets)),
 	}
 	for name, t := range targets {
 		s.limiters[name] = &targetLimiter{
 			entries: map[string]*rateLimiterEntry{},
 			cfg:     t.RateLimit,
+		}
+		if t.Turnstile != nil {
+			s.Turnstile[name] = &antispam.TurnstileClient{Secret: t.Turnstile.SecretKey}
 		}
 	}
 	go s.cleanup(5 * time.Minute)

@@ -19,6 +19,11 @@ type Target struct {
 	Key           string     `json:"key"`
 	Redirect      *Redirect  `json:"redirect"`
 	RateLimit     *RateLimit `json:"rateLimit"`
+	Turnstile     *Turnstile `json:"turnstile"`
+}
+
+type Turnstile struct {
+	SecretKey string `json:"secretKey"`
 }
 
 type Redirect struct {
@@ -85,6 +90,9 @@ func validateTarget(name string, t *Target) error {
 	}
 	if t.RateLimit == nil || t.RateLimit.Timespan <= 0 || t.RateLimit.Requests <= 0 {
 		return fmt.Errorf("target %q: rateLimit with positive timespan and requests is required", name)
+	}
+	if t.Turnstile != nil && t.Turnstile.SecretKey == "" {
+		return fmt.Errorf("target %q: turnstile.secretKey is required when turnstile is configured", name)
 	}
 	return nil
 }

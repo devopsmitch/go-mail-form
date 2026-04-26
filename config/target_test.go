@@ -75,3 +75,17 @@ func TestLoadTargetsMissingRateLimit(t *testing.T) {
 		t.Fatal("expected error for missing rateLimit")
 	}
 }
+
+func TestLoadTargetsTurnstileEmptySecret(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "bad.json"), []byte(`{
+		"smtp": "smtps://user:pass@smtp.example.com",
+		"recipients": ["to@example.com"],
+		"rateLimit": {"timespan": 60, "requests": 5},
+		"turnstile": {}
+	}`), 0644)
+	_, err := LoadTargets(dir)
+	if err == nil {
+		t.Fatal("expected error for empty turnstile secretKey")
+	}
+}

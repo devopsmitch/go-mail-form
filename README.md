@@ -10,6 +10,7 @@ A lightweight, self-hosted email relay for contact forms. Zero external dependen
 - Optional API key authentication
 - File attachments
 - Honeypot antispam (hidden `_gotcha` field)
+- Optional Cloudflare Turnstile CAPTCHA verification
 - Redirect support for form submissions
 
 ## Quick Start
@@ -82,10 +83,25 @@ Environment variables:
 | `key` | no | API key (sent as `Authorization: Bearer <key>`) |
 | `redirect.success` | no | URL to redirect on success |
 | `redirect.error` | no | URL to redirect on error |
+| `turnstile.secretKey` | no | Cloudflare Turnstile secret key. Enables CAPTCHA verification when set |
 
 > **Rate limiting IP detection:** The client IP is resolved from the `TRUSTED_HEADER` if configured, otherwise from the direct connection address. Set `TRUSTED_HEADER=CF-Connecting-IP` behind Cloudflare, or `TRUSTED_HEADER=X-Forwarded-For` behind other reverse proxies. Leave unset if clients connect directly.
 
 > **Note:** The `origin` check relies on the `Origin` header, which is only sent by browsers. Non-browser API clients (e.g. `curl`) won't send it, so requests will be rejected if `origin` is set. If you need both browser form submissions and API access on the same target, use `key` for API clients and `origin` for browser CORS — or create separate targets.
+
+### Example with Turnstile
+
+```json
+{
+    "smtp": "smtps://user:pass@smtp.example.com",
+    "recipients": ["you@example.com"],
+    "from": "noreply@example.com",
+    "rateLimit": { "timespan": 60, "requests": 5 },
+    "turnstile": {
+        "secretKey": "0x4AAAAAAA..."
+    }
+}
+```
 
 ## Request Fields
 
@@ -110,8 +126,13 @@ Environment variables:
   <div class="hp-field" aria-hidden="true">
     <input type="text" name="_gotcha" tabindex="-1" autocomplete="off" />
   </div>
+  <!-- Optional: Cloudflare Turnstile CAPTCHA -->
+  <div class="cf-turnstile" data-sitekey="YOUR_SITE_KEY"></div>
   <button type="submit">Send</button>
 </form>
+
+<!-- Include only if using Turnstile -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
 <style>
   .hp-field { position: absolute; left: -9999px; }
