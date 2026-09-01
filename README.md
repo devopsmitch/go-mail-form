@@ -138,8 +138,8 @@ require AWS credentials.
 
 | Field | Required | Description |
 |---|---|---|
-| `from` | no | Sender email address |
-| `name` | no | Sender name |
+| `from` | no | Visitor's email address. Used as the `Reply-To` so replies go to the visitor; the email's `From` is always the target's configured `from` |
+| `name` | no | Visitor's name, combined with `from` in the `Reply-To` |
 | `subject` | yes | Email subject (2-255 chars) |
 | `body` | yes | Email body, supports HTML (5-32000 chars) |
 | `subjectPrefix` | no | Per-request subject prefix |
