@@ -79,12 +79,14 @@ Other flags:
 
 | Field | Required | Description |
 |---|---|---|
-| `smtp` | yes | SMTP(S) URL, e.g. `smtps://user:pass@smtp.example.com` |
+| `transport` | no | Delivery transport: `smtp` (default) or `ses` |
+| `smtp` | conditional | SMTP(S) URL, e.g. `smtps://user:pass@smtp.example.com`. Required when `transport` is `smtp` |
+| `ses.region` | conditional | AWS region for Amazon SES, e.g. `us-east-1`. Required when `transport` is `ses` |
+| `from` | yes | Sender address. Must be a verified identity when using SES |
 | `recipients` | yes | Array of recipient email addresses |
 | `rateLimit.timespan` | yes | Rate limit window in seconds |
 | `rateLimit.requests` | yes | Max requests per window per IP |
 | `origin` | no | Allowed HTTP origin (CORS). Default `*` |
-| `from` | no | Default sender address |
 | `subjectPrefix` | no | Prefix prepended to all subjects |
 | `key` | no | API key (sent as `Authorization: Bearer <key>`) |
 | `redirect.success` | no | URL to redirect on success |
@@ -108,6 +110,29 @@ Other flags:
     }
 }
 ```
+
+### Sending via Amazon SES
+
+Set `transport` to `ses` and provide a region. The message is delivered through
+the SES `SendEmail` API over HTTPS instead of SMTP, so no SMTP credentials are
+needed. The `from` address must be a verified SES identity (email or domain).
+
+```json
+{
+    "transport": "ses",
+    "ses": { "region": "us-east-1" },
+    "recipients": ["you@example.com"],
+    "from": "noreply@example.com",
+    "rateLimit": { "timespan": 60, "requests": 5 }
+}
+```
+
+AWS credentials are resolved from the standard credential chain: environment
+variables (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`),
+shared config (`~/.aws`), or an attached IAM role / task role. The role needs
+the `ses:SendEmail` permission. SES clients are created per distinct region only
+when at least one target uses the SES transport, so SMTP-only deployments do not
+require AWS credentials.
 
 ## Request Fields
 

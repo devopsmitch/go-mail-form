@@ -24,11 +24,6 @@ func testServer(sender MailSender) *Server {
 			From:       "noreply@example.com",
 			RateLimit:  &config.RateLimit{Timespan: 60, Requests: 10},
 		},
-		"no-from": {
-			SMTP:       "smtps://user:pass@smtp.example.com",
-			Recipients: []string{"to@example.com"},
-			RateLimit:  &config.RateLimit{Timespan: 60, Requests: 10},
-		},
 		"with-key": {
 			SMTP:       "smtps://user:pass@smtp.example.com",
 			Recipients: []string{"to@example.com"},
@@ -291,18 +286,6 @@ func TestValidation(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestEmptyFromWhenNoDefault(t *testing.T) {
-	srv := testServer(noopSender())
-	form := url.Values{
-		"subject": {"Hello"},
-		"body":    {"This is a test message"},
-	}
-	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, postForm("/no-from", form))
-	assertCode(t, w, http.StatusUnprocessableEntity)
-	assertJSON(t, w)
 }
 
 // --- Send ---

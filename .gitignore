@@ -2,8 +2,9 @@
 go-mail-form
 
 # Targets (contain SMTP credentials)
-targets/
+targets/*
 !targets/example.json
+!targets/example-ses.json
 
 # IDE
 .idea/
