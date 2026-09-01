@@ -158,3 +158,15 @@ Environment variables:
 ```
 GET /healthz → 200 OK
 ```
+
+## Versioning
+
+This project follows [Semantic Versioning](https://semver.org/). Given a version `MAJOR.MINOR.PATCH`:
+
+- **MAJOR** — Changes that may break existing deployments, such as changes to target-file fields, request fields, or the HTTP request/response contract. Review the release notes before upgrading.
+- **MINOR** — Backwards-compatible new features (e.g. a new optional target field).
+- **PATCH** — Backwards-compatible bug fixes.
+
+While the version is `0.x`, the target-file schema and API should be considered unstable and may change between minor releases. Version `1.0.0` marks the point where the target-file format and API contract are considered stable.
+
+Released binaries and tagged Docker images report their version via `--version` and in the startup log. Docker images built from `main` (untagged) report the commit SHA instead.
