@@ -27,13 +27,43 @@ type Attachment struct {
 	Data        io.Reader
 }
 
+// sanitizeHeader removes CR and LF characters to prevent header injection.
+func sanitizeHeader(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// quoteFilename produces a value safe to place inside a
+// filename="..." parameter: CR/LF are stripped and the quoted-string
+// specials (" and \) are removed so the value cannot break out of the quotes.
+func quoteFilename(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '\r', '\n', '"', '\\':
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// encodeHeaderWord sanitizes a free-text header value and RFC 2047 encodes it
+// if it contains non-ASCII characters, so headers remain valid for any input.
+func encodeHeaderWord(s string) string {
+	return mime.QEncoding.Encode("utf-8", sanitizeHeader(s))
+}
+
 // FormatFrom builds a "Name <email>" string from the parts provided.
+// The display name is RFC 2047 encoded so non-ASCII names produce valid headers.
 func FormatFrom(email, name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return email
+		return sanitizeHeader(email)
 	}
-	return fmt.Sprintf("%s <%s>", name, email)
+	return fmt.Sprintf("%s <%s>", encodeHeaderWord(name), sanitizeHeader(email))
 }
 
 // SendMail sends an email for the given target.
@@ -137,12 +167,12 @@ func generateBoundary() string {
 func buildMessage(from, replyTo string, to []string, subject, body string, attachments []Attachment) (string, error) {
 	var b strings.Builder
 
-	b.WriteString("From: " + from + "\r\n")
+	b.WriteString("From: " + sanitizeHeader(from) + "\r\n")
 	if replyTo != "" {
-		b.WriteString("Reply-To: " + replyTo + "\r\n")
+		b.WriteString("Reply-To: " + sanitizeHeader(replyTo) + "\r\n")
 	}
-	b.WriteString("To: " + strings.Join(to, ", ") + "\r\n")
-	b.WriteString("Subject: " + subject + "\r\n")
+	b.WriteString("To: " + sanitizeHeader(strings.Join(to, ", ")) + "\r\n")
+	b.WriteString("Subject: " + encodeHeaderWord(subject) + "\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
 
 	if len(attachments) == 0 {
@@ -176,8 +206,8 @@ func buildMessage(from, replyTo string, to []string, subject, body string, attac
 			}
 		}
 		b.WriteString("--" + boundary + "\r\n")
-		b.WriteString("Content-Type: " + ct + "\r\n")
-		b.WriteString("Content-Disposition: attachment; filename=\"" + att.Filename + "\"\r\n")
+		b.WriteString("Content-Type: " + sanitizeHeader(ct) + "\r\n")
+		b.WriteString("Content-Disposition: attachment; filename=\"" + quoteFilename(att.Filename) + "\"\r\n")
 		b.WriteString("Content-Transfer-Encoding: base64\r\n")
 		b.WriteString("\r\n")
 		b.WriteString(base64.StdEncoding.EncodeToString(data) + "\r\n")
