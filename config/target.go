@@ -10,8 +10,18 @@ import (
 	"strings"
 )
 
+// Transport identifies how a target sends mail.
+type Transport string
+
+const (
+	TransportSMTP Transport = "smtp"
+	TransportSES  Transport = "ses"
+)
+
 type Target struct {
+	Transport     Transport  `json:"transport"`
 	SMTP          string     `json:"smtp"`
+	SES           *SES       `json:"ses"`
 	Origin        string     `json:"origin"`
 	Recipients    []string   `json:"recipients"`
 	From          string     `json:"from"`
@@ -20,6 +30,12 @@ type Target struct {
 	Redirect      *Redirect  `json:"redirect"`
 	RateLimit     *RateLimit `json:"rateLimit"`
 	Turnstile     *Turnstile `json:"turnstile"`
+}
+
+// SES holds Amazon SES transport configuration. Credentials are resolved from
+// the ambient AWS credential chain (environment, shared config, IAM role).
+type SES struct {
+	Region string `json:"region"`
 }
 
 type Turnstile struct {
@@ -78,12 +94,32 @@ func LoadTargets(dir string) (map[string]*Target, error) {
 }
 
 func validateTarget(name string, t *Target) error {
-	if t.SMTP == "" {
-		return fmt.Errorf("target %q: smtp is required", name)
+	// Default transport to SMTP for backward compatibility.
+	if t.Transport == "" {
+		t.Transport = TransportSMTP
 	}
-	u, err := url.Parse(t.SMTP)
-	if err != nil || (u.Scheme != "smtp" && u.Scheme != "smtps") {
-		return fmt.Errorf("target %q: smtp must be a valid smtp:// or smtps:// URL", name)
+
+	switch t.Transport {
+	case TransportSMTP:
+		if t.SMTP == "" {
+			return fmt.Errorf("target %q: smtp is required", name)
+		}
+		u, err := url.Parse(t.SMTP)
+		if err != nil || (u.Scheme != "smtp" && u.Scheme != "smtps") {
+			return fmt.Errorf("target %q: smtp must be a valid smtp:// or smtps:// URL", name)
+		}
+	case TransportSES:
+		if t.SES == nil || t.SES.Region == "" {
+			return fmt.Errorf("target %q: ses.region is required when transport is ses", name)
+		}
+	default:
+		return fmt.Errorf("target %q: unknown transport %q (must be %q or %q)", name, t.Transport, TransportSMTP, TransportSES)
+	}
+
+	// A verified sender identity is required for all transports; the visitor's
+	// address is carried in Reply-To instead.
+	if t.From == "" {
+		return fmt.Errorf("target %q: from is required", name)
 	}
 	if len(t.Recipients) == 0 {
 		return fmt.Errorf("target %q: recipients is required and must not be empty", name)

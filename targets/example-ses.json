@@ -1,0 +1,14 @@
+{
+    "transport": "ses",
+    "ses": {
+        "region": "us-east-1"
+    },
+    "origin": "https://my-website.com",
+    "recipients": ["recipient@example.com"],
+    "from": "noreply@example.com",
+    "subjectPrefix": "[Contact] ",
+    "rateLimit": {
+        "timespan": 300,
+        "requests": 3
+    }
+}

@@ -122,14 +122,8 @@ func (s *Server) mailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// target.From is required and validated at load time.
 	emailFrom := target.From
-	if emailFrom == "" {
-		emailFrom = from
-	}
-	if emailFrom == "" {
-		jsonError(w, http.StatusUnprocessableEntity, "from is required when target has no default sender")
-		return
-	}
 
 	var replyTo string
 	if from != "" {
