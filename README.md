@@ -61,13 +61,19 @@ curl -X POST http://localhost:3000/my-site \
 
 ## Configuration
 
-Environment variables:
+Each setting can be provided as a command-line flag or an environment variable. When both are set, the flag takes precedence. Precedence is: **flag > environment variable > default**.
 
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `3000` | Server port |
-| `TARGETS_DIR` | `targets` | Path to target JSON files |
-| `TRUSTED_HEADER` | *(empty)* | HTTP header to trust for client IP (e.g. `CF-Connecting-IP`, `X-Forwarded-For`). If unset, uses the direct connection IP |
+| Flag | Environment variable | Default | Description |
+|---|---|---|---|
+| `--port` | `PORT` | `3000` | Server port |
+| `--targets-dir` | `TARGETS_DIR` | `targets` | Path to target JSON files |
+| `--trusted-header` | `TRUSTED_HEADER` | *(empty)* | HTTP header to trust for client IP (e.g. `CF-Connecting-IP`, `X-Forwarded-For`). If unset, uses the direct connection IP |
+
+Other flags:
+
+| Flag | Description |
+|---|---|
+| `--version` | Print the version and exit |
 
 ## Target File Reference
 
