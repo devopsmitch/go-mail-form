@@ -35,7 +35,10 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          # Strip the leading "v" so the version number (e.g. 0.1.0) is
+          # used for the binary version string and asset filename, while
+          # the git tag itself remains v-prefixed.
+          VERSION="${GITHUB_REF_NAME#v}"
           OUT="go-mail-form_${VERSION}_${GOOS}_${GOARCH}"
           go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "${OUT}" .
           tar -czf "${OUT}.tar.gz" "${OUT}"
