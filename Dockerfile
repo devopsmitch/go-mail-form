@@ -1,9 +1,10 @@
 FROM golang:1.26-alpine AS build
+ARG VERSION=dev
 WORKDIR /src
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /mailform .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" -o /mailform .
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates curl && \

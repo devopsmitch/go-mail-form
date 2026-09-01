@@ -1,0 +1,46 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # needed to create the release and upload assets
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: freebsd
+            goarch: amd64
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          OUT="go-mail-form_${VERSION}_${GOOS}_${GOARCH}"
+          go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "${OUT}" .
+          tar -czf "${OUT}.tar.gz" "${OUT}"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.tar.gz"
