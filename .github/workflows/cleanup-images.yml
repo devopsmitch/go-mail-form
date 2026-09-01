@@ -1,0 +1,22 @@
+name: Cleanup old images
+on:
+  schedule:
+    - cron: "0 3 * * 3" # weekly, Wednesdays 03:00 UTC
+  workflow_dispatch: # allow manual runs
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/delete-package-versions@v5
+        with:
+          package-name: go-mail-form
+          package-type: container
+          # Keep the 10 most recent versions that are NOT ignored below.
+          min-versions-to-keep: 10
+          # Never delete release images. Matches semver tags such as
+          # "v0.1.0" and the bare "0.1" minor tag produced by the Docker
+          # metadata action, so tagged releases are always preserved.
+          ignore-versions: '^(v?\d+\.\d+)'
